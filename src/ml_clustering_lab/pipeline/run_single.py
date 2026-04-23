@@ -104,8 +104,10 @@ def run_single(
     # --- Load data ---
     if dataset is not None:
         # Try sklearn datasets first, then synthetic
+        from ml_clustering_lab.datasets import AVAILABLE_SCENARIOS
+
         _SKLEARN_NAMES = {"iris", "wine", "breast_cancer", "digits"}
-        _SYNTHETIC_NAMES = {"blobs", "moons", "circles"}
+        _SYNTHETIC_NAMES = set(AVAILABLE_SCENARIOS)
         if dataset.lower() in _SKLEARN_NAMES:
             df = load_sklearn(dataset)
         elif dataset.lower() in _SYNTHETIC_NAMES:
@@ -126,6 +128,9 @@ def run_single(
     df = drop_missing(df)
     df = drop_duplicates(df)
 
+    # Save ground-truth labels before excluding from features
+    labels_true = df["target"].values if "target" in df.columns else None
+
     # Exclude 'target' and 'label' from features
     exclude_cols = [c for c in ["target", "label"] if c in df.columns]
     X_df = select_numeric_features(df, exclude=exclude_cols)
@@ -145,8 +150,15 @@ def run_single(
     elapsed = time.time() - t0
 
     # --- Evaluate ---
+    from ml_clustering_lab.clustering.evaluation import compute_external_metrics
+
     metrics = compute_internal_metrics(X, labels)
     metrics["elapsed_time"] = round(elapsed, 4)
+
+    external_metrics: dict = {}
+    if labels_true is not None:
+        external_metrics = compute_external_metrics(labels_true, labels)
+        metrics["external"] = external_metrics
 
     # --- Save artifacts ---
     out_path = Path(outdir) if outdir else RUNS_DIR / f"{algorithm}_{dataset_name}"
@@ -161,6 +173,7 @@ def run_single(
         "dataset": dataset_name,
         "labels": labels,
         "metrics": metrics,
+        "external_metrics": external_metrics,
         "elapsed_time": elapsed,
         "artifacts": {
             "metrics": str(out_path / "metrics.json"),

@@ -37,6 +37,7 @@ from typing import Optional
 import typer
 from rich.console import Console
 from rich.panel import Panel
+from rich.table import Table
 
 app = typer.Typer(
     name="ml-lab",
@@ -49,22 +50,39 @@ app = typer.Typer(
 
 console = Console()
 
+
 # ---------------------------------------------------------------------------
-# Helpers
+# Internal helpers
 # ---------------------------------------------------------------------------
 
 
-def _not_implemented_warning(command: str) -> None:
-    """Exibe aviso amigável de que um comando ainda não foi implementado."""
-    console.print(
-        Panel(
-            f"[yellow]O comando [bold]{command}[/bold] ainda não foi implementado.\n"
-            "Esta é a estrutura inicial do projeto. "
-            "Veja o README para o roadmap de implementação.[/yellow]",
-            title="[bold red]Em construção[/bold red]",
-            border_style="yellow",
-        )
-    )
+def _load_dataframe(dataset: Optional[str], source: Optional[str]):
+    """Carrega um DataFrame a partir de dataset embutido ou arquivo CSV."""
+    from ml_clustering_lab.datasets import AVAILABLE_SCENARIOS
+    from ml_clustering_lab.datasets.loaders import load_csv, load_from_url, load_sklearn, load_synthetic
+
+    _SKLEARN_NAMES = {"iris", "wine", "breast_cancer", "digits"}
+    _SYNTHETIC_NAMES = set(AVAILABLE_SCENARIOS)
+
+    if dataset is not None:
+        if dataset.lower() in _SKLEARN_NAMES:
+            return load_sklearn(dataset), dataset
+        elif dataset.lower() in _SYNTHETIC_NAMES:
+            return load_synthetic(kind=dataset), dataset
+        else:
+            console.print(f"[red]Dataset '{dataset}' não reconhecido.[/red]")
+            raise typer.Exit(code=1)
+    elif source is not None:
+        if source.startswith("http://") or source.startswith("https://"):
+            df = load_from_url(source)
+        else:
+            df = load_csv(source)
+        import re
+        name = re.sub(r"[^a-zA-Z0-9_]", "_", source.rstrip("/").split("/")[-1].rsplit(".", 1)[0])
+        return df, name
+    else:
+        console.print("[red]Especifique --dataset ou --source.[/red]")
+        raise typer.Exit(code=1)
 
 
 # ---------------------------------------------------------------------------
@@ -104,13 +122,77 @@ def stats(
         ml-lab stats --dataset iris
         ml-lab stats --source data/raw/meus_dados.csv --output outputs/reports/stats.json
     """
-    _not_implemented_warning("stats")
-    if dataset:
-        console.print(f"[dim]Dataset solicitado: {dataset}[/dim]")
-    if source:
-        console.print(f"[dim]Fonte: {source}[/dim]")
+    from ml_clustering_lab.stats.descriptive import (
+        central_tendency,
+        describe_dataframe,
+        detect_outliers,
+        dispersion,
+        shape_measures,
+    )
+
+    df, name = _load_dataframe(dataset, source)
+
+    summary = describe_dataframe(df)
+
+    console.print(f"\n[bold cyan]📊 Resumo do dataset: {name}[/bold cyan]")
+    console.print(f"  Shape : [yellow]{summary['shape'][0]} linhas × {summary['shape'][1]} colunas[/yellow]")
+    console.print(f"  Duplicatas : [yellow]{summary['duplicates']}[/yellow]")
+
+    # Null counts table
+    null_table = Table(title="Valores Nulos por Coluna", show_header=True, header_style="bold magenta")
+    null_table.add_column("Coluna")
+    null_table.add_column("Nulos", justify="right")
+    null_table.add_column("% Nulos", justify="right")
+    for col, cnt in summary["null_counts"].items():
+        pct = summary["null_pct"][col]
+        null_table.add_row(col, str(cnt), f"{pct:.2f}%")
+    console.print(null_table)
+
+    # Per-column stats for numeric columns
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    if numeric_cols:
+        stat_table = Table(title="Estatísticas por Coluna Numérica", show_header=True, header_style="bold magenta")
+        stat_table.add_column("Coluna")
+        stat_table.add_column("Média", justify="right")
+        stat_table.add_column("Mediana", justify="right")
+        stat_table.add_column("Desvio Padrão", justify="right")
+        stat_table.add_column("Skewness", justify="right")
+        stat_table.add_column("Outliers (IQR)", justify="right")
+        for col in numeric_cols:
+            ct = central_tendency(df[col])
+            disp = dispersion(df[col])
+            shape = shape_measures(df[col])
+            outs = detect_outliers(df[col], method="iqr")
+            stat_table.add_row(
+                col,
+                f"{ct['mean']:.4f}",
+                f"{ct['median']:.4f}",
+                f"{disp['std']:.4f}",
+                f"{shape['skewness']:.4f}",
+                str(outs["n_outliers"]),
+            )
+        console.print(stat_table)
+
     if output:
-        console.print(f"[dim]Saída: {output}[/dim]")
+        from ml_clustering_lab.utils.io import save_json
+
+        report: dict = {
+            "dataset": name,
+            "shape": list(summary["shape"]),
+            "duplicates": summary["duplicates"],
+            "null_counts": summary["null_counts"],
+            "null_pct": summary["null_pct"],
+            "columns": {},
+        }
+        for col in numeric_cols:
+            report["columns"][col] = {
+                **central_tendency(df[col]),
+                **dispersion(df[col]),
+                **shape_measures(df[col]),
+                "outliers": detect_outliers(df[col], method="iqr"),
+            }
+        save_json(report, output)
+        console.print(f"\n[green]✔ Relatório salvo em: {output}[/green]")
 
 
 # ---------------------------------------------------------------------------
@@ -178,10 +260,69 @@ def cluster(
         ml-lab cluster --source data/raw/dados.csv --algorithm agglomerative -k 4 --linkage ward
         ml-lab cluster --dataset iris --algorithm mean-shift
     """
-    _not_implemented_warning("cluster")
-    console.print(f"[dim]Algoritmo: {algorithm}[/dim]")
-    if dataset:
-        console.print(f"[dim]Dataset: {dataset}[/dim]")
+    from ml_clustering_lab.pipeline.run_single import run_single
+
+    if dataset is None and source is None:
+        console.print("[red]Especifique --dataset ou --source.[/red]")
+        raise typer.Exit(code=1)
+
+    algo_kwargs: dict = {}
+    if eps is not None:
+        algo_kwargs["eps"] = eps
+    if min_samples is not None:
+        algo_kwargs["min_samples"] = min_samples
+    if linkage is not None:
+        algo_kwargs["linkage"] = linkage
+
+    console.print(f"[bold cyan]🔬 Executando {algorithm} em '{dataset or source}'...[/bold cyan]")
+
+    try:
+        result = run_single(
+            algorithm=algorithm,
+            dataset=dataset,
+            source=source,
+            n_clusters=n_clusters,
+            outdir=outdir,
+            **algo_kwargs,
+        )
+    except Exception as exc:
+        console.print(f"[red]Erro: {exc}[/red]")
+        raise typer.Exit(code=1)
+
+    metrics = result["metrics"]
+
+    # Internal metrics table
+    met_table = Table(title="Métricas Internas", show_header=True, header_style="bold magenta")
+    met_table.add_column("Métrica")
+    met_table.add_column("Valor", justify="right")
+    import math
+
+    met_table.add_row("Clusters encontrados", str(int(metrics.get("n_clusters", 0))))
+    met_table.add_row("Pontos de ruído", str(int(metrics.get("n_noise", 0))))
+    sil = metrics.get("silhouette", float("nan"))
+    met_table.add_row("Silhouette Score", f"{sil:.4f}" if not math.isnan(sil) else "N/A")
+    dbi = metrics.get("davies_bouldin", float("nan"))
+    met_table.add_row("Davies-Bouldin Index", f"{dbi:.4f}" if not math.isnan(dbi) else "N/A")
+    chi = metrics.get("calinski_harabasz", float("nan"))
+    met_table.add_row("Calinski-Harabász", f"{chi:.4f}" if not math.isnan(chi) else "N/A")
+    met_table.add_row("Tempo (s)", f"{metrics.get('elapsed_time', 0):.4f}")
+    console.print(met_table)
+
+    # External metrics (if available)
+    ext = result.get("external_metrics")
+    if ext:
+        ext_table = Table(title="Métricas Externas (vs. target real)", show_header=True, header_style="bold magenta")
+        ext_table.add_column("Métrica")
+        ext_table.add_column("Valor", justify="right")
+        ext_table.add_row("Adjusted Rand Index", f"{ext.get('adjusted_rand_index', float('nan')):.4f}")
+        ext_table.add_row("Normalized Mutual Info", f"{ext.get('normalized_mutual_info', float('nan')):.4f}")
+        ext_table.add_row("V-measure", f"{ext.get('v_measure', float('nan')):.4f}")
+        console.print(ext_table)
+
+    artifacts = result.get("artifacts", {})
+    console.print(f"\n[green]✔ Artefatos salvos em:[/green]")
+    for key, path in artifacts.items():
+        console.print(f"  {key}: [dim]{path}[/dim]")
 
 
 # ---------------------------------------------------------------------------
@@ -208,6 +349,12 @@ def compare(
         "--algorithms",
         help="Algoritmos separados por vírgula.",
     ),
+    n_clusters: Optional[int] = typer.Option(
+        None,
+        "--n-clusters",
+        "-k",
+        help="Número de clusters para K-Means e Aglomerativo.",
+    ),
     outdir: Optional[str] = typer.Option(
         None,
         "--outdir",
@@ -226,11 +373,41 @@ def compare(
         ml-lab compare --dataset iris
         ml-lab compare --dataset wine --algorithms kmeans,dbscan --outdir outputs/runs/wine
     """
-    _not_implemented_warning("compare")
-    algo_list = [a.strip() for a in algorithms.split(",")]
-    console.print(f"[dim]Algoritmos a comparar: {algo_list}[/dim]")
-    if dataset:
-        console.print(f"[dim]Dataset: {dataset}[/dim]")
+    from ml_clustering_lab.pipeline.run_compare import run_compare
+
+    if dataset is None and source is None:
+        console.print("[red]Especifique --dataset ou --source.[/red]")
+        raise typer.Exit(code=1)
+
+    algo_list = [a.strip() for a in algorithms.split(",") if a.strip()]
+    console.print(f"[bold cyan]🔬 Comparando {algo_list} em '{dataset or source}'...[/bold cyan]")
+
+    try:
+        comparison_df = run_compare(
+            algorithms=algo_list,
+            dataset=dataset,
+            source=source,
+            n_clusters=n_clusters,
+            outdir=outdir,
+        )
+    except Exception as exc:
+        console.print(f"[red]Erro: {exc}[/red]")
+        raise typer.Exit(code=1)
+
+    cmp_table = Table(title="Comparação de Algoritmos", show_header=True, header_style="bold magenta")
+    for col in comparison_df.columns:
+        cmp_table.add_column(col, justify="right" if col != "algorithm" else "left")
+    for _, row in comparison_df.iterrows():
+        import math
+
+        cmp_table.add_row(*[
+            f"{v:.4f}" if isinstance(v, float) and not math.isnan(v) else ("N/A" if isinstance(v, float) else str(v))
+            for v in row
+        ])
+    console.print(cmp_table)
+
+    if outdir:
+        console.print(f"\n[green]✔ Artefatos salvos em: {outdir}[/green]")
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +426,7 @@ def dataset(
     from_url: Optional[str] = typer.Option(
         None,
         "--from-url",
-        help="URL de um arquivo CSV para baixar e registrar.",
+        help="URL de um arquivo CSV para carregar e inspecionar.",
     ),
     name: Optional[str] = typer.Option(
         None,
@@ -268,11 +445,44 @@ def dataset(
         ml-lab dataset --list
         ml-lab dataset --from-url "https://example.com/data.csv" --name meu_dataset
     """
-    _not_implemented_warning("dataset")
+    from ml_clustering_lab.datasets.registry import DatasetRegistry
+
     if list_datasets:
-        console.print("[dim]Listando datasets disponíveis...[/dim]")
+        reg = DatasetRegistry()
+        ds_table = Table(title="Datasets Disponíveis", show_header=True, header_style="bold magenta")
+        ds_table.add_column("Nome")
+        ds_table.add_column("Origem")
+        ds_table.add_column("Descrição")
+        ds_table.add_column("Amostras", justify="right")
+        ds_table.add_column("Features", justify="right")
+        for ds_name in reg.list_names():
+            info = reg.get(ds_name)
+            ds_table.add_row(
+                info.name,
+                info.source,
+                info.description,
+                str(info.n_samples) if info.n_samples is not None else "—",
+                str(info.n_features) if info.n_features is not None else "—",
+            )
+        console.print(ds_table)
+        return
+
     if from_url:
-        console.print(f"[dim]URL: {from_url} → nome: {name}[/dim]")
+        from ml_clustering_lab.datasets.loaders import load_from_url
+
+        label = name or from_url
+        console.print(f"[bold cyan]⬇ Carregando dataset de {from_url}...[/bold cyan]")
+        try:
+            df = load_from_url(from_url)
+        except Exception as exc:
+            console.print(f"[red]Erro ao carregar URL: {exc}[/red]")
+            raise typer.Exit(code=1)
+        console.print(f"[green]✔ Carregado: {df.shape[0]} linhas × {df.shape[1]} colunas[/green]")
+        console.print(f"[dim]Colunas: {list(df.columns)}[/dim]")
+        console.print(Panel(str(df.head(5)), title=f"Head — {label}", border_style="dim"))
+        return
+
+    console.print("[yellow]Use --list para listar os datasets ou --from-url para carregar de uma URL.[/yellow]")
 
 
 # ---------------------------------------------------------------------------
@@ -298,7 +508,7 @@ def plot(
         None,
         "--type",
         "-t",
-        help="Tipo de gráfico: histogram | boxplot | correlation | scatter | pairplot.",
+        help="Tipo de gráfico: histogram | boxplot | correlation | all.",
     ),
     outdir: Optional[str] = typer.Option(
         None,
@@ -309,21 +519,51 @@ def plot(
 ) -> None:
     """Gera visualizações exploratórias para um dataset.
 
-    Produz gráficos univariados (histogramas, boxplots), bivariados (scatter,
-    pairplot) e multivariados (heatmap de correlação), salvando-os no diretório
-    especificado em formato PNG.
+    Produz gráficos univariados (histogramas, boxplots) e multivariados
+    (heatmap de correlação), salvando-os no diretório especificado em formato PNG.
 
     Exemplos::
 
         ml-lab plot --dataset iris --outdir outputs/figures/iris
         ml-lab plot --dataset iris --type correlation
-        ml-lab plot --source data/raw/dados.csv --type pairplot
+        ml-lab plot --source data/raw/dados.csv --type histogram
     """
-    _not_implemented_warning("plot")
-    if dataset:
-        console.print(f"[dim]Dataset: {dataset}[/dim]")
-    if plot_type:
-        console.print(f"[dim]Tipo de gráfico: {plot_type}[/dim]")
+    from ml_clustering_lab.visualization.plots import (
+        plot_boxplot,
+        plot_correlation,
+        plot_histogram,
+    )
+
+    if dataset is None and source is None:
+        console.print("[red]Especifique --dataset ou --source.[/red]")
+        raise typer.Exit(code=1)
+
+    df, ds_name = _load_dataframe(dataset, source)
+    out = outdir or f"outputs/figures/{ds_name}"
+
+    kind = (plot_type or "all").lower()
+    _ALL_TYPES = {"histogram", "boxplot", "correlation"}
+    if kind not in _ALL_TYPES and kind != "all":
+        console.print(f"[red]Tipo de gráfico '{kind}' não suportado. Use: {sorted(_ALL_TYPES)} ou 'all'.[/red]")
+        raise typer.Exit(code=1)
+
+    generated: list[str] = []
+
+    if kind in {"histogram", "all"}:
+        plot_histogram(df, outdir=out)
+        generated.append("histogram.png")
+
+    if kind in {"boxplot", "all"}:
+        plot_boxplot(df, outdir=out)
+        generated.append("boxplot.png")
+
+    if kind in {"correlation", "all"}:
+        plot_correlation(df, outdir=out)
+        generated.append("correlation.png")
+
+    console.print(f"[green]✔ Gráfico(s) salvos em: {out}[/green]")
+    for fname in generated:
+        console.print(f"  [dim]{out}/{fname}[/dim]")
 
 
 # ---------------------------------------------------------------------------
@@ -332,3 +572,4 @@ def plot(
 
 if __name__ == "__main__":
     app()
+

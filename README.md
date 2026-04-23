@@ -14,10 +14,11 @@
 5. [Algoritmos Implementados](#algoritmos-implementados)
 6. [Instalação](#instalação)
 7. [Comandos CLI](#comandos-cli)
-8. [Exemplos de Uso](#exemplos-de-uso)
-9. [Extensão Futura](#extensão-futura)
-10. [Tecnologias](#tecnologias)
-11. [Licença](#licença)
+8. [Exemplos de Uso — CLI](#exemplos-de-uso)
+9. [Exemplos de Uso — API Python](#exemplos-de-uso--api-python)
+10. [Extensão Futura](#extensão-futura)
+11. [Tecnologias](#tecnologias)
+12. [Licença](#licença)
 
 ---
 
@@ -94,6 +95,7 @@ ml-clustering-lab/
 │       ├── datasets/
 │       │   ├── __init__.py
 │       │   ├── loaders.py     # funções de carregamento de dados
+│       │   ├── generators.py  # geração de cenários sintéticos para clustering
 │       │   └── registry.py    # registro de datasets disponíveis
 │       │
 │       ├── preprocessing/
@@ -141,15 +143,29 @@ ml-clustering-lab/
 
 ## Módulos Principais
 
-### `datasets/` — Carregamento de Dados
+### `datasets/` — Carregamento e Geração de Dados
+
+**Carregamento (`loaders.py`)**
 
 | Função/Classe          | Descrição                                               |
 |------------------------|---------------------------------------------------------|
 | `load_csv(path)`       | Carrega CSV de disco                                    |
 | `load_from_url(url)`   | Baixa e carrega dataset de URL                         |
 | `load_sklearn(name)`   | Carrega dataset do scikit-learn (iris, wine, etc.)     |
-| `load_synthetic(type)` | Gera dataset sintético (blobs, moons, circles)         |
+| `load_synthetic(kind)` | Gera dataset sintético básico (blobs, moons, circles)  |
 | `DatasetRegistry`      | Registro de datasets disponíveis com metadados         |
+
+**Geração de Cenários (`generators.py`)**
+
+| Função                      | Cenário                      | Ideal para                         |
+|-----------------------------|------------------------------|------------------------------------|
+| `generate_blobs(...)`       | Clusters gaussianos separados | K-Means, Aglomerativo              |
+| `generate_moons(...)`       | Duas luas entrelaçadas        | DBSCAN, Mean Shift                 |
+| `generate_circles(...)`     | Círculos concêntricos         | DBSCAN                             |
+| `generate_anisotropic(...)` | Clusters elongados            | Aglomerativo                       |
+| `generate_varied_density(...)` | Clusters com densidades diferentes | Aglomerativo              |
+| `generate_no_structure(...)`| Dados aleatórios (controle)   | Verificar métricas basais          |
+| `generate(kind, ...)`       | Dispatcher unificado          | Qualquer cenário pelo nome         |
 
 ### `stats/` — Análise Estatística Descritiva
 
@@ -302,7 +318,7 @@ Commands:
 
 ---
 
-## Exemplos de Uso
+## Exemplos de Uso — CLI
 
 ### Análise estatística descritiva
 
@@ -362,7 +378,140 @@ ml-lab dataset --from-url "https://example.com/dataset.csv" --name meu_dataset
 
 ---
 
-## Extensão Futura
+## Exemplos de Uso — API Python
+
+### Carregar datasets
+
+```python
+from ml_clustering_lab.datasets import load_sklearn, load_csv, load_from_url
+
+# Dataset embutido do scikit-learn
+df = load_sklearn("iris")     # 150 × 5 (features + target)
+df = load_sklearn("wine")     # 178 × 14
+df = load_sklearn("digits")   # 1797 × 65
+
+# Arquivo CSV local
+df = load_csv("data/raw/meus_dados.csv")
+
+# Dataset de URL remota
+df = load_from_url("https://raw.githubusercontent.com/.../iris.csv")
+```
+
+### Gerar cenários sintéticos
+
+```python
+from ml_clustering_lab.datasets import generate, AVAILABLE_SCENARIOS
+
+# Ver todos os cenários disponíveis
+print(AVAILABLE_SCENARIOS)
+# ['anisotropic', 'blobs', 'circles', 'moons', 'no_structure', 'varied_density']
+
+# Clusters gaussianos — ideal para K-Means e Aglomerativo
+df = generate("blobs", n_samples=300, n_clusters=4, cluster_std=0.8)
+
+# Duas luas — desafia K-Means; DBSCAN funciona bem
+df = generate("moons", n_samples=300, noise=0.05)
+
+# Círculos concêntricos — K-Means falha; DBSCAN detecta corretamente
+df = generate("circles", n_samples=300, noise=0.04, factor=0.4)
+
+# Clusters elongados — desafia K-Means (assume esferas)
+df = generate("anisotropic", n_samples=300, n_clusters=3)
+
+# Clusters com densidades diferentes — desafia DBSCAN
+df = generate("varied_density", n_samples=300)
+
+# Sem estrutura — caso controle (silhouette deve ser baixo)
+df = generate("no_structure", n_samples=300)
+```
+
+Também é possível chamar cada gerador diretamente:
+
+```python
+from ml_clustering_lab.datasets import (
+    generate_blobs, generate_moons, generate_circles,
+    generate_anisotropic, generate_varied_density, generate_no_structure,
+)
+
+df = generate_blobs(n_samples=500, n_clusters=5, n_features=3, cluster_std=1.2)
+df = generate_moons(n_samples=200, noise=0.1, random_state=0)
+df = generate_circles(n_samples=200, noise=0.02, factor=0.3)
+df = generate_anisotropic(n_samples=300, n_clusters=4, random_state=7)
+df = generate_varied_density(n_samples=600)
+df = generate_no_structure(n_samples=200, n_features=3, low=-5.0, high=5.0)
+```
+
+### Executar clustering via Python
+
+```python
+from ml_clustering_lab.datasets import generate
+from ml_clustering_lab.clustering import get_algorithm
+from ml_clustering_lab.clustering.evaluation import compute_internal_metrics
+from ml_clustering_lab.preprocessing.scaling import scale_features
+from ml_clustering_lab.preprocessing.feature_selection import select_numeric_features
+
+# 1. Gerar dataset
+df = generate("blobs", n_samples=300, n_clusters=3)
+
+# 2. Pré-processar
+X = scale_features(select_numeric_features(df, exclude=["label"])).values
+
+# 3. Executar algoritmo
+algo = get_algorithm("kmeans", n_clusters=3)
+labels = algo.fit_predict(X)
+
+# 4. Avaliar
+metrics = compute_internal_metrics(X, labels)
+print(f"Silhouette: {metrics['silhouette']:.4f}")
+print(f"Davies-Bouldin: {metrics['davies_bouldin']:.4f}")
+print(f"Clusters encontrados: {metrics['n_clusters']}")
+```
+
+### Modo comparativo via Python
+
+```python
+from ml_clustering_lab.datasets import generate
+from ml_clustering_lab.clustering import ALGORITHM_REGISTRY, get_algorithm
+from ml_clustering_lab.clustering.evaluation import compute_internal_metrics, build_comparison_table
+from ml_clustering_lab.preprocessing.cleaning import drop_missing
+from ml_clustering_lab.preprocessing.scaling import scale_features
+from ml_clustering_lab.preprocessing.feature_selection import select_numeric_features
+
+df = generate("moons", n_samples=400, noise=0.05)
+X = scale_features(select_numeric_features(drop_missing(df), exclude=["label"])).values
+
+rows = []
+for name in ["kmeans", "dbscan", "agglomerative", "mean-shift"]:
+    algo = get_algorithm(name, n_clusters=2) if name in ("kmeans", "agglomerative") else get_algorithm(name)
+    labels = algo.fit_predict(X)
+    metrics = compute_internal_metrics(X, labels)
+    rows.append({"algorithm": algo.name, **metrics})
+
+print(build_comparison_table(rows).to_string(index=False))
+```
+
+### Estatísticas descritivas via Python
+
+```python
+from ml_clustering_lab.datasets import load_sklearn
+from ml_clustering_lab.stats.descriptive import (
+    describe_dataframe, central_tendency, dispersion, detect_outliers
+)
+
+df = load_sklearn("iris")
+
+# Resumo completo
+summary = describe_dataframe(df)
+print(f"Shape: {summary['shape']}")
+print(f"Nulos: {summary['null_counts']}")
+
+# Feature por feature
+for col in df.select_dtypes("number").columns:
+    ct = central_tendency(df[col])
+    d  = dispersion(df[col])
+    ot = detect_outliers(df[col], method="iqr")
+    print(f"{col}: média={ct['mean']:.2f}  std={d['std']:.2f}  outliers={ot['n_outliers']}")
+```
 
 O projeto foi projetado para crescer de forma incremental:
 

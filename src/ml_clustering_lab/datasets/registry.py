@@ -132,6 +132,24 @@ class DatasetRegistry:
                 description="Círculos concêntricos (ideal para DBSCAN).",
                 loader_kwargs={"kind": "circles"},
             ),
+            DatasetInfo(
+                name="anisotropic",
+                source="synthetic",
+                description="Clusters elongados via transformação linear (desafia K-Means).",
+                loader_kwargs={"kind": "anisotropic"},
+            ),
+            DatasetInfo(
+                name="varied_density",
+                source="synthetic",
+                description="Clusters com densidades diferentes (desafia DBSCAN).",
+                loader_kwargs={"kind": "varied_density"},
+            ),
+            DatasetInfo(
+                name="no_structure",
+                source="synthetic",
+                description="Dados aleatórios sem estrutura de clusters (caso controle).",
+                loader_kwargs={"kind": "no_structure"},
+            ),
         ]
         for info in defaults:
             self.register(info)

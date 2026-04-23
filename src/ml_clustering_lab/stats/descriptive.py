@@ -62,7 +62,15 @@ def describe_dataframe(df: pd.DataFrame) -> dict:
     - Exportar para Markdown ou HTML
     - Incluir histogramas inline (usando ``rich`` ou ``plotext``)
     """
-    raise NotImplementedError("describe_dataframe ainda não foi implementado.")
+    numeric_cols = df.select_dtypes(include="number")
+    return {
+        "shape": df.shape,
+        "dtypes": df.dtypes.astype(str).to_dict(),
+        "null_counts": df.isnull().sum().to_dict(),
+        "null_pct": (df.isnull().mean() * 100).round(2).to_dict(),
+        "duplicates": int(df.duplicated().sum()),
+        "numeric_summary": numeric_cols.describe().T,
+    }
 
 
 def central_tendency(series: pd.Series) -> dict[str, float]:
@@ -91,7 +99,13 @@ def central_tendency(series: pd.Series) -> dict[str, float]:
     - Incluir média aparada (trimmed mean)
     - Indicar se a distribuição é multimodal
     """
-    raise NotImplementedError("central_tendency ainda não foi implementado.")
+    mode_vals = series.mode()
+    mode_val = float(mode_vals.iloc[0]) if not mode_vals.empty else float("nan")
+    return {
+        "mean": float(series.mean()),
+        "median": float(series.median()),
+        "mode": mode_val,
+    }
 
 
 def dispersion(series: pd.Series) -> dict[str, float]:
@@ -122,7 +136,18 @@ def dispersion(series: pd.Series) -> dict[str, float]:
     - Incluir desvio mediano absoluto (MAD)
     - Incluir intervalo de confiança para a variância
     """
-    raise NotImplementedError("dispersion ainda não foi implementado.")
+    q1 = float(series.quantile(0.25))
+    q3 = float(series.quantile(0.75))
+    mean = float(series.mean())
+    std = float(series.std())
+    cv = (std / mean * 100) if mean != 0 else float("nan")
+    return {
+        "variance": float(series.var()),
+        "std": std,
+        "range": float(series.max() - series.min()),
+        "iqr": round(q3 - q1, 6),
+        "cv": round(cv, 6),
+    }
 
 
 def position_measures(
@@ -155,7 +180,18 @@ def position_measures(
     - Incluir cálculo de decis
     - Visualização de box com percentis
     """
-    raise NotImplementedError("position_measures ainda não foi implementado.")
+    if percentiles is None:
+        percentiles = [0.10, 0.25, 0.50, 0.75, 0.90]
+
+    result: dict[str, float] = {}
+    for p in percentiles:
+        key = f"p{int(round(p * 100))}"
+        result[key] = float(series.quantile(p))
+
+    result["q1"] = float(series.quantile(0.25))
+    result["q2"] = float(series.quantile(0.50))
+    result["q3"] = float(series.quantile(0.75))
+    return result
 
 
 def shape_measures(series: pd.Series) -> dict[str, float]:
@@ -183,7 +219,10 @@ def shape_measures(series: pd.Series) -> dict[str, float]:
     - Incluir resultado de teste de normalidade (Shapiro-Wilk p-value)
     - Classificar forma automaticamente (simétrica, assimétrica, etc.)
     """
-    raise NotImplementedError("shape_measures ainda não foi implementado.")
+    return {
+        "skewness": float(series.skew()),
+        "kurtosis": float(series.kurtosis()),
+    }
 
 
 def detect_outliers(
@@ -222,4 +261,33 @@ def detect_outliers(
     - Método ``isolation_forest`` para detecção multivariada
     - Visualização automática dos outliers no boxplot
     """
-    raise NotImplementedError("detect_outliers ainda não foi implementado.")
+    import numpy as np
+
+    clean = series.dropna()
+
+    if method == "iqr":
+        q1 = float(clean.quantile(0.25))
+        q3 = float(clean.quantile(0.75))
+        iqr = q3 - q1
+        lower = q1 - threshold * iqr
+        upper = q3 + threshold * iqr
+    elif method == "zscore":
+        mean = float(clean.mean())
+        std = float(clean.std())
+        lower = mean - threshold * std
+        upper = mean + threshold * std
+    else:
+        raise ValueError(f"Método '{method}' não suportado. Use 'iqr' ou 'zscore'.")
+
+    outlier_mask = (clean < lower) | (clean > upper)
+    outlier_indices = clean.index[outlier_mask].tolist()
+    n = int(outlier_mask.sum())
+    pct = round(n / len(clean) * 100, 4) if len(clean) > 0 else 0.0
+
+    return {
+        "n_outliers": n,
+        "pct_outliers": pct,
+        "lower_bound": round(lower, 6),
+        "upper_bound": round(upper, 6),
+        "outlier_indices": outlier_indices,
+    }

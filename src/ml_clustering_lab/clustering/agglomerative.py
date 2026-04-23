@@ -131,9 +131,16 @@ class AgglomerativeRunner(ClusteringBase):
         - Armazenar a estrutura de árvore (``children_``) para dendrograma
         - Suporte a corte por distância de fusão em vez de n_clusters
         """
-        raise NotImplementedError(
-            "AgglomerativeRunner.fit_predict ainda não foi implementado."
+        from sklearn.cluster import AgglomerativeClustering
+
+        # ward linkage only supports euclidean; for other linkages allow metric kwarg
+        metric_kwarg = self.metric if self.linkage != "ward" else "euclidean"
+        self._model = AgglomerativeClustering(
+            n_clusters=self.n_clusters,
+            linkage=self.linkage,
+            metric=metric_kwarg,
         )
+        return self._model.fit_predict(X)
 
     def get_params(self) -> dict:
         """Retorna os hiperparâmetros do Aglomerativo.

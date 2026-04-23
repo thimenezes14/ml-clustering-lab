@@ -62,4 +62,25 @@ def scale_features(
     - Retornar tupla ``(scaled_df, scaler)`` para reutilização
     - Suporte a ``QuantileTransformer`` e ``PowerTransformer``
     """
-    raise NotImplementedError("scale_features ainda não foi implementado.")
+    from sklearn.preprocessing import MinMaxScaler, RobustScaler, StandardScaler
+
+    _SCALERS = {
+        "standard": StandardScaler,
+        "minmax": MinMaxScaler,
+        "robust": RobustScaler,
+    }
+    if method not in _SCALERS:
+        raise ValueError(f"Método '{method}' não suportado. Use: {list(_SCALERS.keys())}")
+
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    if columns is not None:
+        # Use only requested columns that exist and are numeric
+        numeric_cols = [c for c in columns if c in numeric_cols]
+
+    if not numeric_cols:
+        return df.copy()
+
+    scaler = _SCALERS[method]()
+    result = df.copy()
+    result[numeric_cols] = scaler.fit_transform(df[numeric_cols])
+    return result

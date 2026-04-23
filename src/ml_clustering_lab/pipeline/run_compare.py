@@ -78,4 +78,92 @@ def run_compare(
     - Execução paralela com ``concurrent.futures.ThreadPoolExecutor``
     - Geração automática de relatório em HTML
     """
-    raise NotImplementedError("run_compare ainda não foi implementado.")
+    import time
+
+    from ml_clustering_lab.clustering import ALGORITHM_REGISTRY, get_algorithm
+    from ml_clustering_lab.clustering.evaluation import build_comparison_table, compute_internal_metrics
+    from ml_clustering_lab.config import RUNS_DIR
+    from ml_clustering_lab.datasets.loaders import load_csv, load_sklearn, load_synthetic
+    from ml_clustering_lab.preprocessing.cleaning import drop_duplicates, drop_missing
+    from ml_clustering_lab.preprocessing.feature_selection import select_numeric_features
+    from ml_clustering_lab.preprocessing.scaling import scale_features
+    from ml_clustering_lab.utils.io import ensure_dir, save_dataframe, save_json
+    from ml_clustering_lab.visualization.plots import plot_compare_metrics, plot_scatter_clusters
+
+    if dataset is None and source is None:
+        raise ValueError("Especifique 'dataset' ou 'source'.")
+
+    if algorithms is None:
+        algorithms = list(ALGORITHM_REGISTRY.keys())
+
+    # --- Load data ---
+    if dataset is not None:
+        _SKLEARN_NAMES = {"iris", "wine", "breast_cancer", "digits"}
+        _SYNTHETIC_NAMES = {"blobs", "moons", "circles"}
+        if dataset.lower() in _SKLEARN_NAMES:
+            df = load_sklearn(dataset)
+        elif dataset.lower() in _SYNTHETIC_NAMES:
+            df = load_synthetic(kind=dataset)
+        else:
+            raise ValueError(f"Dataset embutido '{dataset}' não reconhecido.")
+        dataset_name = dataset
+    else:
+        assert source is not None
+        if source.startswith("http://") or source.startswith("https://"):
+            from ml_clustering_lab.datasets.loaders import load_from_url
+            df = load_from_url(source)
+        else:
+            df = load_csv(source)
+        dataset_name = Path(source).stem
+
+    # --- Preprocess once ---
+    df = drop_missing(df)
+    df = drop_duplicates(df)
+    exclude_cols = [c for c in ["target", "label"] if c in df.columns]
+    X_df = select_numeric_features(df, exclude=exclude_cols)
+    X_df = scale_features(X_df)
+    X = X_df.values
+
+    # --- Output directory ---
+    out_path = Path(outdir) if outdir else RUNS_DIR / f"compare_{dataset_name}"
+    ensure_dir(out_path)
+
+    # --- Run each algorithm ---
+    results = []
+    for algo_name in algorithms:
+        kwargs: dict = {}
+        if n_clusters is not None:
+            kwargs["n_clusters"] = n_clusters
+        try:
+            algo = get_algorithm(algo_name, **kwargs)
+            t0 = time.time()
+            labels = algo.fit_predict(X)
+            elapsed = time.time() - t0
+            metrics = compute_internal_metrics(X, labels)
+            metrics["algorithm"] = algo.name
+            metrics["elapsed_time"] = round(elapsed, 4)
+            results.append(metrics)
+            # Save scatter
+            plot_scatter_clusters(
+                X, labels,
+                title=f"{algo.name} — {dataset_name}",
+                outdir=str(out_path),
+            )
+        except Exception as exc:
+            results.append({
+                "algorithm": algo_name,
+                "n_clusters": float("nan"),
+                "n_noise": float("nan"),
+                "silhouette": float("nan"),
+                "davies_bouldin": float("nan"),
+                "calinski_harabasz": float("nan"),
+                "elapsed_time": float("nan"),
+                "error": str(exc),
+            })
+
+    comparison_df = build_comparison_table(results)
+    save_dataframe(comparison_df, out_path / "comparison_metrics.csv")
+    save_json(results, out_path / "comparison_metrics.json")
+    plot_compare_metrics(comparison_df, outdir=str(out_path))
+
+    return comparison_df

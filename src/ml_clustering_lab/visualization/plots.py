@@ -24,8 +24,16 @@ Extensão futura
 
 from __future__ import annotations
 
-import pandas as pd
+from pathlib import Path
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+import seaborn as sns
+
+from ml_clustering_lab.utils.io import ensure_dir
 
 
 def plot_histogram(
@@ -49,7 +57,28 @@ def plot_histogram(
     - Parâmetro ``hue`` para colorir por categoria
     - Sobreposição de distribuição normal teórica
     """
-    raise NotImplementedError("plot_histogram ainda não foi implementado.")
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    if columns is not None:
+        numeric_cols = [c for c in columns if c in numeric_cols]
+    if not numeric_cols:
+        return
+
+    n = len(numeric_cols)
+    fig, axes = plt.subplots(1, n, figsize=(4 * n, 4))
+    if n == 1:
+        axes = [axes]
+
+    for ax, col in zip(axes, numeric_cols):
+        sns.histplot(df[col].dropna(), kde=True, ax=ax)
+        ax.set_title(col)
+
+    plt.tight_layout()
+    if outdir:
+        ensure_dir(outdir)
+        fig.savefig(Path(outdir) / "histogram.png", dpi=150, bbox_inches="tight")
+        plt.close(fig)
+    else:
+        plt.show()
 
 
 def plot_boxplot(
@@ -73,7 +102,29 @@ def plot_boxplot(
     - Parâmetro ``hue`` para agrupar por categoria
     - Marcação visual de outliers
     """
-    raise NotImplementedError("plot_boxplot ainda não foi implementado.")
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    if columns is not None:
+        numeric_cols = [c for c in columns if c in numeric_cols]
+    if not numeric_cols:
+        return
+
+    n = len(numeric_cols)
+    fig, axes = plt.subplots(1, n, figsize=(4 * n, 4))
+    if n == 1:
+        axes = [axes]
+
+    for ax, col in zip(axes, numeric_cols):
+        ax.boxplot(df[col].dropna(), vert=True)
+        ax.set_title(col)
+        ax.set_xlabel(col)
+
+    plt.tight_layout()
+    if outdir:
+        ensure_dir(outdir)
+        fig.savefig(Path(outdir) / "boxplot.png", dpi=150, bbox_inches="tight")
+        plt.close(fig)
+    else:
+        plt.show()
 
 
 def plot_correlation(
@@ -97,7 +148,22 @@ def plot_correlation(
     - Máscara do triângulo superior para facilitar leitura
     - Destacar correlações acima de um threshold
     """
-    raise NotImplementedError("plot_correlation ainda não foi implementado.")
+    numeric_df = df.select_dtypes(include="number")
+    if numeric_df.empty:
+        return
+
+    corr = numeric_df.corr(method=method)
+    fig, ax = plt.subplots(figsize=(max(6, len(corr.columns)), max(5, len(corr.columns) - 1)))
+    sns.heatmap(corr, annot=True, fmt=".2f", cmap="coolwarm", ax=ax, vmin=-1, vmax=1)
+    ax.set_title(f"Correlação ({method})")
+    plt.tight_layout()
+
+    if outdir:
+        ensure_dir(outdir)
+        fig.savefig(Path(outdir) / "correlation.png", dpi=150, bbox_inches="tight")
+        plt.close(fig)
+    else:
+        plt.show()
 
 
 def plot_scatter_clusters(
@@ -131,7 +197,36 @@ def plot_scatter_clusters(
     - Marcar centroides para K-Means
     - Parâmetro ``dim_reduction`` para reduzir automaticamente com PCA
     """
-    raise NotImplementedError("plot_scatter_clusters ainda não foi implementado.")
+    if X.shape[1] > 2:
+        X_plot = X[:, :2]
+    else:
+        X_plot = X
+
+    unique_labels = sorted(set(labels))
+    cmap = plt.get_cmap("tab10")
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    for lbl in unique_labels:
+        mask = labels == lbl
+        color = "gray" if lbl == -1 else cmap(lbl % 10)
+        label_str = "Ruído" if lbl == -1 else f"Cluster {lbl}"
+        ax.scatter(X_plot[mask, 0], X_plot[mask, 1], c=[color], label=label_str, s=20, alpha=0.7)
+
+    xname = feature_names[0] if feature_names and len(feature_names) > 0 else "Feature 0"
+    yname = feature_names[1] if feature_names and len(feature_names) > 1 else "Feature 1"
+    ax.set_xlabel(xname)
+    ax.set_ylabel(yname)
+    ax.set_title(title)
+    ax.legend(loc="best", fontsize=8)
+    plt.tight_layout()
+
+    if outdir:
+        ensure_dir(outdir)
+        safe_title = title.lower().replace(" ", "_")
+        fig.savefig(Path(outdir) / f"{safe_title}.png", dpi=150, bbox_inches="tight")
+        plt.close(fig)
+    else:
+        plt.show()
 
 
 def plot_dendrogram(
@@ -155,7 +250,36 @@ def plot_dendrogram(
     - Parâmetro ``truncate_mode`` para controlar exibição em datasets grandes
     - Marcação automática do corte ótimo
     """
-    raise NotImplementedError("plot_dendrogram ainda não foi implementado.")
+    from scipy.cluster.hierarchy import dendrogram, linkage
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    # Build linkage matrix from the AgglomerativeClustering model
+    counts = np.zeros(model.children_.shape[0])
+    n_samples = len(model.labels_)
+    for i, merge in enumerate(model.children_):
+        current_count = 0
+        for child_idx in merge:
+            if child_idx < n_samples:
+                current_count += 1
+            else:
+                current_count += counts[child_idx - n_samples]
+        counts[i] = current_count
+
+    linkage_matrix = np.column_stack(
+        [model.children_, model.distances_, counts]
+    ).astype(float)
+    dendrogram(linkage_matrix, ax=ax, truncate_mode="level", p=5)
+    ax.set_title(title)
+    ax.set_xlabel("Número de pontos em nó (ou índice se folha)")
+    ax.set_ylabel("Distância")
+    plt.tight_layout()
+
+    if outdir:
+        ensure_dir(outdir)
+        fig.savefig(Path(outdir) / "dendrogram.png", dpi=150, bbox_inches="tight")
+        plt.close(fig)
+    else:
+        plt.show()
 
 
 def plot_compare_metrics(
@@ -177,4 +301,26 @@ def plot_compare_metrics(
     - Gráfico de radar (spider chart) para comparação multidimensional
     - Destaque automático do melhor algoritmo por métrica
     """
-    raise NotImplementedError("plot_compare_metrics ainda não foi implementado.")
+    metric_cols = [c for c in ["silhouette", "davies_bouldin", "calinski_harabasz"] if c in comparison_df.columns]
+    if not metric_cols or "algorithm" not in comparison_df.columns:
+        return
+
+    n = len(metric_cols)
+    fig, axes = plt.subplots(1, n, figsize=(5 * n, 4))
+    if n == 1:
+        axes = [axes]
+
+    for ax, metric in zip(axes, metric_cols):
+        ax.bar(comparison_df["algorithm"], comparison_df[metric], color="steelblue")
+        ax.set_title(metric.replace("_", " ").title())
+        ax.set_xlabel("Algoritmo")
+        ax.set_ylabel(metric)
+        ax.tick_params(axis="x", rotation=15)
+
+    plt.tight_layout()
+    if outdir:
+        ensure_dir(outdir)
+        fig.savefig(Path(outdir) / "comparison_metrics_plot.png", dpi=150, bbox_inches="tight")
+        plt.close(fig)
+    else:
+        plt.show()

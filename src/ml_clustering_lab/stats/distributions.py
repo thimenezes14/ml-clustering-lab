@@ -43,7 +43,35 @@ def plot_distributions(df: pd.DataFrame, outdir: str | None = None) -> None:
     - Colorir por coluna ``target`` quando disponível
     - Adicionar linhas de referência (média, mediana, ±1σ)
     """
-    raise NotImplementedError("plot_distributions ainda não foi implementado.")
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    from pathlib import Path
+    from ml_clustering_lab.utils.io import ensure_dir
+
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    if not numeric_cols:
+        return
+
+    n = len(numeric_cols)
+    fig, axes = plt.subplots(1, n, figsize=(4 * n, 4))
+    if n == 1:
+        axes = [axes]
+
+    for ax, col in zip(axes, numeric_cols):
+        sns.histplot(df[col].dropna(), kde=True, ax=ax)
+        ax.set_title(col)
+        ax.set_xlabel(col)
+        ax.set_ylabel("Frequência")
+
+    plt.tight_layout()
+    if outdir:
+        ensure_dir(outdir)
+        fig.savefig(Path(outdir) / "distributions.png", dpi=150, bbox_inches="tight")
+        plt.close(fig)
+    else:
+        plt.show()
 
 
 def test_normality(series: pd.Series) -> dict:
@@ -71,4 +99,21 @@ def test_normality(series: pd.Series) -> dict:
     - Suporte ao teste de Kolmogorov-Smirnov
     - Suporte a nível de significância configurável
     """
-    raise NotImplementedError("test_normality ainda não foi implementado.")
+    from scipy import stats
+
+    clean = series.dropna()
+    n = len(clean)
+
+    if n <= 5000:
+        stat, p_value = stats.shapiro(clean)
+        test_name = "shapiro-wilk"
+    else:
+        stat, p_value = stats.normaltest(clean)
+        test_name = "dagostino-pearson"
+
+    return {
+        "test": test_name,
+        "statistic": float(stat),
+        "p_value": float(p_value),
+        "is_normal": bool(p_value > 0.05),
+    }

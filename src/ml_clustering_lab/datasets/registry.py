@@ -149,7 +149,9 @@ class DatasetRegistry:
         ValueError
             Se já existir um dataset com o mesmo nome.
         """
-        raise NotImplementedError("DatasetRegistry.register ainda não foi implementado.")
+        if info.name in self._registry:
+            raise ValueError(f"Dataset '{info.name}' já está registrado.")
+        self._registry[info.name] = info
 
     def get(self, name: str) -> DatasetInfo:
         """Retorna os metadados de um dataset pelo nome.
@@ -168,7 +170,11 @@ class DatasetRegistry:
         KeyError
             Se o dataset não estiver registrado.
         """
-        raise NotImplementedError("DatasetRegistry.get ainda não foi implementado.")
+        key = name.lower()
+        if key not in self._registry:
+            available = ", ".join(sorted(self._registry.keys()))
+            raise KeyError(f"Dataset '{name}' não encontrado. Disponíveis: {available}")
+        return self._registry[key]
 
     def list_names(self) -> list[str]:
         """Retorna a lista de nomes de datasets registrados.
@@ -178,7 +184,7 @@ class DatasetRegistry:
         list[str]
             Nomes em ordem alfabética.
         """
-        raise NotImplementedError("DatasetRegistry.list_names ainda não foi implementado.")
+        return sorted(self._registry.keys())
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"DatasetRegistry(datasets={list(self._registry.keys())})"

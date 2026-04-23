@@ -50,4 +50,7 @@ def select_numeric_features(
     - Parâmetro ``min_variance`` para remover colunas quase constantes
     - Parâmetro ``max_correlation`` para remover features altamente correlacionadas
     """
-    raise NotImplementedError("select_numeric_features ainda não foi implementado.")
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    if exclude:
+        numeric_cols = [c for c in numeric_cols if c not in exclude]
+    return df[numeric_cols].copy()

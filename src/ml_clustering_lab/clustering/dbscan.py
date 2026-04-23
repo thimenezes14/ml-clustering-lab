@@ -127,7 +127,14 @@ class DBSCANRunner(ClusteringBase):
         - Armazenar ``core_sample_indices_`` e ``components_`` do modelo
         - Calcular e logar proporção de ruído automaticamente
         """
-        raise NotImplementedError("DBSCANRunner.fit_predict ainda não foi implementado.")
+        from sklearn.cluster import DBSCAN
+
+        self._model = DBSCAN(
+            eps=self.eps,
+            min_samples=self.min_samples,
+            metric=self.metric,
+        )
+        return self._model.fit_predict(X)
 
     def get_params(self) -> dict:
         """Retorna os hiperparâmetros do DBSCAN.

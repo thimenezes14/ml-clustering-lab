@@ -39,9 +39,21 @@ Limitações
 Boas práticas
 -------------
 - Sempre normalize os dados antes com ``StandardScaler``
-- Use ``estimate_bandwidth()`` para obter um ponto de partida para ``bandwidth``
+- Use ``estimate_bandwidth_range()`` e ``plot_bandwidth_range()`` para visualizar
+  como o bandwidth varia com o ``quantile`` e escolher um valor adequado
 - Prefira Mean Shift para datasets pequenos ou médios (n < 5.000)
 - Use ``bin_seeding=True`` para acelerar em datasets maiores
+
+Como descobrir os hiperparâmetros
+----------------------------------
+- ``bandwidth``: execute ``estimate_bandwidth_range(X)`` e chame
+  ``plot_bandwidth_range()`` — escolha o quantile onde a curva se estabiliza.
+  Um bandwidth muito pequeno fragmenta os dados; um muito grande gera poucos
+  clusters::
+
+    from ml_clustering_lab.clustering import estimate_bandwidth_range, plot_bandwidth_range
+    bw_df = estimate_bandwidth_range(X)
+    plot_bandwidth_range(bw_df, outdir="outputs/figures")
 
 Extensão futura
 ---------------

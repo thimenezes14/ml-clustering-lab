@@ -29,6 +29,12 @@ Extensão futura
 
 from ml_clustering_lab.clustering.agglomerative import AgglomerativeRunner
 from ml_clustering_lab.clustering.dbscan import DBSCANRunner
+from ml_clustering_lab.clustering.hyperparams import (
+    estimate_bandwidth_range,
+    k_distance_analysis,
+    plot_bandwidth_range,
+    plot_k_distance,
+)
 from ml_clustering_lab.clustering.kmeans import KMeansRunner
 from ml_clustering_lab.clustering.mean_shift import MeanShiftRunner
 from ml_clustering_lab.clustering.optimal_k import (
@@ -91,4 +97,8 @@ __all__ = [
     "silhouette_analysis",
     "plot_elbow",
     "plot_silhouette_analysis",
+    "k_distance_analysis",
+    "plot_k_distance",
+    "estimate_bandwidth_range",
+    "plot_bandwidth_range",
 ]

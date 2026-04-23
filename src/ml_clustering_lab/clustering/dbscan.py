@@ -43,15 +43,27 @@ Limitações
 Boas práticas
 -------------
 - Sempre normalize os dados antes com ``StandardScaler``
-- Use o gráfico de k-distâncias (k = ``min_samples``) para estimar ``eps``
+- Use ``k_distance_analysis(X, k=min_samples)`` e ``plot_k_distance()`` para
+  estimar visualmente o ``eps`` — o "cotovelo" da curva sugere o valor ideal
 - Comece com ``min_samples`` = 2 × n_features como regra empírica
 - Verifique se a proporção de ruído (-1) é razoável
 
+Como descobrir os hiperparâmetros
+----------------------------------
+- ``min_samples``: use a regra empírica ``2 × n_features`` como ponto de partida
+- ``eps``: execute ``k_distance_analysis(X, k=min_samples)`` e chame
+  ``plot_k_distance()`` — o valor de k-distância no cotovelo da curva é o
+  ``eps`` sugerido::
+
+    from ml_clustering_lab.clustering import k_distance_analysis, plot_k_distance
+    kd_df = k_distance_analysis(X, k=5)
+    plot_k_distance(kd_df, outdir="outputs/figures")
+
 Extensão futura
 ---------------
-- Método ``k_distance_plot()`` para auxiliar na escolha de ``eps``
 - Suporte ao HDBSCAN (versão hierárquica, mais robusta)
 - Parâmetro ``algorithm`` para controlar o índice espacial (ball_tree, kd_tree)
+- Detecção automática do cotovelo no gráfico de k-distâncias (método Kneedle)
 """
 
 from __future__ import annotations

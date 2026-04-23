@@ -30,6 +30,20 @@ from __future__ import annotations
 import pandas as pd
 
 
+_SKLEARN_LOADERS: dict[str, str] = {
+    "iris": "load_iris",
+    "wine": "load_wine",
+    "breast_cancer": "load_breast_cancer",
+    "digits": "load_digits",
+}
+
+_SYNTHETIC_GENERATORS: dict[str, str] = {
+    "blobs": "make_blobs",
+    "moons": "make_moons",
+    "circles": "make_circles",
+}
+
+
 def load_csv(path: str, **kwargs) -> pd.DataFrame:
     """Carrega um arquivo CSV do disco local.
 
@@ -62,7 +76,14 @@ def load_csv(path: str, **kwargs) -> pd.DataFrame:
     - Adicionar detecção automática de separador via ``pandas.read_csv(sep=None)``
     - Adicionar suporte a arquivos comprimidos (.gz, .bz2)
     """
-    raise NotImplementedError("load_csv ainda não foi implementado.")
+    import os
+
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Arquivo não encontrado: {path}")
+    try:
+        return pd.read_csv(path, **kwargs)
+    except Exception as exc:
+        raise ValueError(f"Não foi possível ler o arquivo CSV '{path}': {exc}") from exc
 
 
 def load_from_url(url: str, **kwargs) -> pd.DataFrame:
@@ -98,7 +119,14 @@ def load_from_url(url: str, **kwargs) -> pd.DataFrame:
     - Suporte a autenticação via header
     - Detecção automática de formato (CSV, JSON, Parquet)
     """
-    raise NotImplementedError("load_from_url ainda não foi implementado.")
+    url_lower = url.lower().split("?")[0]
+    try:
+        if url_lower.endswith(".json"):
+            return pd.read_json(url, **kwargs)
+        else:
+            return pd.read_csv(url, **kwargs)
+    except Exception as exc:
+        raise ValueError(f"Não foi possível carregar dados da URL '{url}': {exc}") from exc
 
 
 def load_sklearn(name: str, as_frame: bool = True) -> pd.DataFrame:
@@ -139,7 +167,23 @@ def load_sklearn(name: str, as_frame: bool = True) -> pd.DataFrame:
     - Adicionar suporte a datasets adicionais (olivetti_faces, covtype, etc.)
     - Aceitar kwargs extras para customização (ex.: ``return_X_y=True``)
     """
-    raise NotImplementedError("load_sklearn ainda não foi implementado.")
+    import sklearn.datasets as skd
+
+    key = name.lower()
+    if key not in _SKLEARN_LOADERS:
+        available = ", ".join(sorted(_SKLEARN_LOADERS.keys()))
+        raise ValueError(f"Dataset sklearn '{name}' não suportado. Disponíveis: {available}")
+
+    loader_fn = getattr(skd, _SKLEARN_LOADERS[key])
+    bunch = loader_fn(as_frame=as_frame)
+
+    if as_frame:
+        df: pd.DataFrame = bunch.frame.copy()
+    else:
+        df = pd.DataFrame(bunch.data, columns=[f"x{i}" for i in range(bunch.data.shape[1])])
+        df["target"] = bunch.target
+
+    return df
 
 
 def load_synthetic(
@@ -194,4 +238,27 @@ def load_synthetic(
     - Adição de ruído configurável
     - Retorno de metadados (centros dos blobs, etc.)
     """
-    raise NotImplementedError("load_synthetic ainda não foi implementado.")
+    import sklearn.datasets as skd
+
+    key = kind.lower()
+    if key not in _SYNTHETIC_GENERATORS:
+        available = ", ".join(sorted(_SYNTHETIC_GENERATORS.keys()))
+        raise ValueError(f"Tipo sintético '{kind}' não suportado. Disponíveis: {available}")
+
+    gen_fn = getattr(skd, _SYNTHETIC_GENERATORS[key])
+
+    if key == "blobs":
+        X, y = gen_fn(
+            n_samples=n_samples,
+            n_features=n_features,
+            random_state=random_state,
+            **kwargs,
+        )
+    else:
+        # moons / circles accept only n_samples and random_state
+        X, y = gen_fn(n_samples=n_samples, random_state=random_state, **kwargs)
+
+    cols = [f"x{i}" for i in range(X.shape[1])]
+    df = pd.DataFrame(X, columns=cols)
+    df["label"] = y
+    return df

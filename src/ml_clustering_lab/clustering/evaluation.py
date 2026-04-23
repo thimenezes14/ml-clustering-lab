@@ -65,7 +65,46 @@ def compute_internal_metrics(X: np.ndarray, labels: np.ndarray) -> dict[str, flo
     - Incluir inércia (WCSS) para K-Means
     - Incluir Hopkins Statistic para testar tendência de clustering
     """
-    raise NotImplementedError("compute_internal_metrics ainda não foi implementado.")
+    from sklearn.metrics import (
+        calinski_harabasz_score,
+        davies_bouldin_score,
+        silhouette_score,
+    )
+
+    n_noise = int((labels == -1).sum())
+    unique_labels = set(labels) - {-1}
+    n_clusters = len(unique_labels)
+
+    # Filter out noise for metric computation
+    mask = labels != -1
+    X_clean = X[mask]
+    labels_clean = labels[mask]
+
+    result: dict[str, float] = {
+        "n_clusters": float(n_clusters),
+        "n_noise": float(n_noise),
+        "silhouette": float("nan"),
+        "davies_bouldin": float("nan"),
+        "calinski_harabasz": float("nan"),
+    }
+
+    if n_clusters >= 2 and len(X_clean) > n_clusters:
+        try:
+            result["silhouette"] = float(silhouette_score(X_clean, labels_clean))
+        except Exception:
+            pass
+        try:
+            result["davies_bouldin"] = float(davies_bouldin_score(X_clean, labels_clean))
+        except Exception:
+            pass
+        try:
+            result["calinski_harabasz"] = float(
+                calinski_harabasz_score(X_clean, labels_clean)
+            )
+        except Exception:
+            pass
+
+    return result
 
 
 def compute_external_metrics(
@@ -99,7 +138,23 @@ def compute_external_metrics(
     - Incluir Fowlkes-Mallows Score
     - Incluir matriz de confusão entre clusters e classes verdadeiras
     """
-    raise NotImplementedError("compute_external_metrics ainda não foi implementado.")
+    from sklearn.metrics import (
+        adjusted_rand_score,
+        completeness_score,
+        homogeneity_score,
+        normalized_mutual_info_score,
+        v_measure_score,
+    )
+
+    return {
+        "adjusted_rand_index": float(adjusted_rand_score(labels_true, labels_pred)),
+        "normalized_mutual_info": float(
+            normalized_mutual_info_score(labels_true, labels_pred)
+        ),
+        "homogeneity": float(homogeneity_score(labels_true, labels_pred)),
+        "completeness": float(completeness_score(labels_true, labels_pred)),
+        "v_measure": float(v_measure_score(labels_true, labels_pred)),
+    }
 
 
 def build_comparison_table(results: list[dict]) -> pd.DataFrame:
@@ -133,4 +188,7 @@ def build_comparison_table(results: list[dict]) -> pd.DataFrame:
     - Adicionar ranking por coluna
     - Exportar como HTML com highlight condicional
     """
-    raise NotImplementedError("build_comparison_table ainda não foi implementado.")
+    df = pd.DataFrame(results)
+    if "silhouette" in df.columns:
+        df = df.sort_values("silhouette", ascending=False).reset_index(drop=True)
+    return df

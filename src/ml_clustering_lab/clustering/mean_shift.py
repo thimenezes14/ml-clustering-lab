@@ -123,7 +123,14 @@ class MeanShiftRunner(ClusteringBase):
         - Armazenar ``cluster_centers_`` do modelo treinado
         - Estimar e logar ``bandwidth`` quando None
         """
-        raise NotImplementedError("MeanShiftRunner.fit_predict ainda não foi implementado.")
+        from sklearn.cluster import MeanShift
+
+        self._model = MeanShift(
+            bandwidth=self.bandwidth,
+            bin_seeding=self.bin_seeding,
+            max_iter=self.max_iter,
+        )
+        return self._model.fit_predict(X)
 
     def get_params(self) -> dict:
         """Retorna os hiperparâmetros do Mean Shift.

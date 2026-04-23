@@ -29,7 +29,14 @@ Extensão futura
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
+
+from ml_clustering_lab.utils.io import ensure_dir
 
 
 def reduce_pca(
@@ -58,7 +65,10 @@ def reduce_pca(
     - Retornar variância explicada por componente
     - Gráfico de scree plot
     """
-    raise NotImplementedError("reduce_pca ainda não foi implementado.")
+    from sklearn.decomposition import PCA
+
+    pca = PCA(n_components=n_components, random_state=random_state)
+    return pca.fit_transform(X)
 
 
 def reduce_tsne(
@@ -95,7 +105,10 @@ def reduce_tsne(
     - Parâmetro ``n_iter`` configurável
     - Pré-redução automática com PCA quando n_features > 50
     """
-    raise NotImplementedError("reduce_tsne ainda não foi implementado.")
+    from sklearn.manifold import TSNE
+
+    tsne = TSNE(n_components=n_components, perplexity=perplexity, random_state=random_state)
+    return tsne.fit_transform(X)
 
 
 def plot_pca_2d(
@@ -122,4 +135,27 @@ def plot_pca_2d(
     - Incluir variância explicada nos eixos (ex.: "PC1 (45.2%)")
     - Parâmetro ``method`` para escolher entre PCA, t-SNE, UMAP
     """
-    raise NotImplementedError("plot_pca_2d ainda não foi implementado.")
+    X_2d = reduce_pca(X, n_components=2)
+
+    unique_labels = sorted(set(labels))
+    cmap = plt.get_cmap("tab10")
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    for lbl in unique_labels:
+        mask = labels == lbl
+        color = "gray" if lbl == -1 else cmap(lbl % 10)
+        label_str = "Ruído" if lbl == -1 else f"Cluster {lbl}"
+        ax.scatter(X_2d[mask, 0], X_2d[mask, 1], c=[color], label=label_str, s=20, alpha=0.7)
+
+    ax.set_xlabel("PC1")
+    ax.set_ylabel("PC2")
+    ax.set_title(title)
+    ax.legend(loc="best", fontsize=8)
+    plt.tight_layout()
+
+    if outdir:
+        ensure_dir(outdir)
+        fig.savefig(Path(outdir) / "pca_2d.png", dpi=150, bbox_inches="tight")
+        plt.close(fig)
+    else:
+        plt.show()

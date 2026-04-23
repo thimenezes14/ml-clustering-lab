@@ -46,7 +46,12 @@ def drop_missing(df: pd.DataFrame, threshold: float = 0.5) -> pd.DataFrame:
     - Parâmetro ``strategy`` para imputação em vez de remoção
     - Log detalhado das colunas e linhas removidas
     """
-    raise NotImplementedError("drop_missing ainda não foi implementado.")
+    # Drop columns where the proportion of nulls exceeds the threshold
+    col_null_frac = df.isnull().mean()
+    cols_to_keep = col_null_frac[col_null_frac <= threshold].index.tolist()
+    df = df[cols_to_keep]
+    # Drop remaining rows with any null
+    return df.dropna().reset_index(drop=True)
 
 
 def drop_duplicates(df: pd.DataFrame) -> pd.DataFrame:
@@ -71,7 +76,7 @@ def drop_duplicates(df: pd.DataFrame) -> pd.DataFrame:
     - Parâmetro ``subset`` para considerar apenas certas colunas
     - Estatísticas sobre o número de duplicatas removidas
     """
-    raise NotImplementedError("drop_duplicates ainda não foi implementado.")
+    return df.drop_duplicates().reset_index(drop=True)
 
 
 def remove_outliers(df: pd.DataFrame, method: str = "iqr", threshold: float = 3.0) -> pd.DataFrame:
@@ -100,4 +105,28 @@ def remove_outliers(df: pd.DataFrame, method: str = "iqr", threshold: float = 3.
     - Parâmetro ``action`` para escolher entre remoção, clipping ou marcação
     - Método ``isolation_forest`` para detecção multivariada
     """
-    raise NotImplementedError("remove_outliers ainda não foi implementado.")
+    import numpy as np
+
+    numeric_cols = df.select_dtypes(include="number").columns
+    mask = pd.Series(True, index=df.index)
+
+    for col in numeric_cols:
+        series = df[col].dropna()
+        if method == "iqr":
+            q1 = series.quantile(0.25)
+            q3 = series.quantile(0.75)
+            iqr = q3 - q1
+            lower = q1 - threshold * iqr
+            upper = q3 + threshold * iqr
+        elif method == "zscore":
+            mean = series.mean()
+            std = series.std()
+            if std == 0:
+                continue
+            lower = mean - threshold * std
+            upper = mean + threshold * std
+        else:
+            raise ValueError(f"Método '{method}' não suportado. Use 'iqr' ou 'zscore'.")
+        mask &= df[col].between(lower, upper)
+
+    return df[mask].reset_index(drop=True)

@@ -133,7 +133,16 @@ class KMeansRunner(ClusteringBase):
         - Armazenar inércia final e centroides como atributos do runner
         - Adicionar suporte a Mini-Batch K-Means
         """
-        raise NotImplementedError("KMeansRunner.fit_predict ainda não foi implementado.")
+        from sklearn.cluster import KMeans
+
+        self._model = KMeans(
+            n_clusters=self.n_clusters,
+            init=self.init,
+            n_init=self.n_init,
+            max_iter=self.max_iter,
+            random_state=self.random_state,
+        )
+        return self._model.fit_predict(X)
 
     def get_params(self) -> dict:
         """Retorna os hiperparâmetros do K-Means.

@@ -295,14 +295,16 @@ def cluster(
     met_table = Table(title="Métricas Internas", show_header=True, header_style="bold magenta")
     met_table.add_column("Métrica")
     met_table.add_column("Valor", justify="right")
+    import math
+
     met_table.add_row("Clusters encontrados", str(int(metrics.get("n_clusters", 0))))
     met_table.add_row("Pontos de ruído", str(int(metrics.get("n_noise", 0))))
     sil = metrics.get("silhouette", float("nan"))
-    met_table.add_row("Silhouette Score", f"{sil:.4f}" if sil == sil else "N/A")
+    met_table.add_row("Silhouette Score", f"{sil:.4f}" if not math.isnan(sil) else "N/A")
     dbi = metrics.get("davies_bouldin", float("nan"))
-    met_table.add_row("Davies-Bouldin Index", f"{dbi:.4f}" if dbi == dbi else "N/A")
+    met_table.add_row("Davies-Bouldin Index", f"{dbi:.4f}" if not math.isnan(dbi) else "N/A")
     chi = metrics.get("calinski_harabasz", float("nan"))
-    met_table.add_row("Calinski-Harabász", f"{chi:.4f}" if chi == chi else "N/A")
+    met_table.add_row("Calinski-Harabász", f"{chi:.4f}" if not math.isnan(chi) else "N/A")
     met_table.add_row("Tempo (s)", f"{metrics.get('elapsed_time', 0):.4f}")
     console.print(met_table)
 
@@ -396,8 +398,10 @@ def compare(
     for col in comparison_df.columns:
         cmp_table.add_column(col, justify="right" if col != "algorithm" else "left")
     for _, row in comparison_df.iterrows():
+        import math
+
         cmp_table.add_row(*[
-            f"{v:.4f}" if isinstance(v, float) and v == v else ("N/A" if isinstance(v, float) else str(v))
+            f"{v:.4f}" if isinstance(v, float) and not math.isnan(v) else ("N/A" if isinstance(v, float) else str(v))
             for v in row
         ])
     console.print(cmp_table)

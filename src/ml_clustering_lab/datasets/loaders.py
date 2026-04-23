@@ -193,15 +193,19 @@ def load_synthetic(
     random_state: int = 42,
     **kwargs,
 ) -> pd.DataFrame:
-    """Gera um dataset sintético usando scikit-learn.
+    """Gera um dataset sintético.
+
+    Delega para ``ml_clustering_lab.datasets.generators.generate()``, suportando
+    todos os cenários disponíveis em ``AVAILABLE_SCENARIOS``.
 
     Tipos disponíveis
     -----------------
-    - ``blobs``   : clusters gaussianos separados (bom para K-Means e Aglomerativo)
-    - ``moons``   : duas luas entrelaçadas (bom para DBSCAN e Mean Shift)
-    - ``circles`` : círculos concêntricos (bom para DBSCAN)
-    - ``aniso``   : clusters anisotrópicos
-    - ``varied``  : clusters com variâncias diferentes
+    - ``blobs``          : clusters gaussianos separados
+    - ``moons``          : duas luas entrelaçadas
+    - ``circles``        : círculos concêntricos
+    - ``anisotropic``    : clusters elongados via transformação linear
+    - ``varied_density`` : clusters com densidades diferentes
+    - ``no_structure``   : dados aleatórios sem estrutura de clusters
 
     Parâmetros
     ----------
@@ -210,16 +214,17 @@ def load_synthetic(
     n_samples : int, default=300
         Número de amostras a gerar.
     n_features : int, default=2
-        Número de features (apenas para ``blobs``).
+        Número de features (repassado como kwarg quando suportado pelo gerador).
     random_state : int, default=42
         Semente para reprodutibilidade.
     **kwargs :
-        Argumentos adicionais repassados para a função geradora do sklearn.
+        Argumentos adicionais repassados para a função geradora.
 
     Retorna
     -------
     pd.DataFrame
-        DataFrame com colunas ``x0``, ``x1``, ..., ``xN`` e coluna ``label``.
+        DataFrame com colunas ``x0``, ``x1``, ..., ``xN`` e coluna ``label``
+        (exceto para ``no_structure``).
 
     Exceções
     --------
@@ -238,27 +243,16 @@ def load_synthetic(
     - Adição de ruído configurável
     - Retorno de metadados (centros dos blobs, etc.)
     """
-    import sklearn.datasets as skd
+    from ml_clustering_lab.datasets.generators import AVAILABLE_SCENARIOS, generate
 
     key = kind.lower()
-    if key not in _SYNTHETIC_GENERATORS:
-        available = ", ".join(sorted(_SYNTHETIC_GENERATORS.keys()))
+    if key not in AVAILABLE_SCENARIOS:
+        available = ", ".join(sorted(AVAILABLE_SCENARIOS))
         raise ValueError(f"Tipo sintético '{kind}' não suportado. Disponíveis: {available}")
 
-    gen_fn = getattr(skd, _SYNTHETIC_GENERATORS[key])
+    # Pass n_features only when the generator accepts it (blobs and no_structure do)
+    _accepts_n_features = {"blobs", "no_structure"}
+    if key in _accepts_n_features:
+        kwargs.setdefault("n_features", n_features)
 
-    if key == "blobs":
-        X, y = gen_fn(
-            n_samples=n_samples,
-            n_features=n_features,
-            random_state=random_state,
-            **kwargs,
-        )
-    else:
-        # moons / circles accept only n_samples and random_state
-        X, y = gen_fn(n_samples=n_samples, random_state=random_state, **kwargs)
-
-    cols = [f"x{i}" for i in range(X.shape[1])]
-    df = pd.DataFrame(X, columns=cols)
-    df["label"] = y
-    return df
+    return generate(kind=key, n_samples=n_samples, random_state=random_state, **kwargs)

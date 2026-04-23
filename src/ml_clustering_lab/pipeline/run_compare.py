@@ -98,8 +98,10 @@ def run_compare(
 
     # --- Load data ---
     if dataset is not None:
+        from ml_clustering_lab.datasets import AVAILABLE_SCENARIOS
+
         _SKLEARN_NAMES = {"iris", "wine", "breast_cancer", "digits"}
-        _SYNTHETIC_NAMES = {"blobs", "moons", "circles"}
+        _SYNTHETIC_NAMES = set(AVAILABLE_SCENARIOS)
         if dataset.lower() in _SKLEARN_NAMES:
             df = load_sklearn(dataset)
         elif dataset.lower() in _SYNTHETIC_NAMES:

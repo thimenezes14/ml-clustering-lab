@@ -31,6 +31,12 @@ from ml_clustering_lab.clustering.agglomerative import AgglomerativeRunner
 from ml_clustering_lab.clustering.dbscan import DBSCANRunner
 from ml_clustering_lab.clustering.kmeans import KMeansRunner
 from ml_clustering_lab.clustering.mean_shift import MeanShiftRunner
+from ml_clustering_lab.clustering.optimal_k import (
+    elbow_analysis,
+    plot_elbow,
+    plot_silhouette_analysis,
+    silhouette_analysis,
+)
 
 # Registro de algoritmos disponíveis: nome (CLI) → classe
 ALGORITHM_REGISTRY: dict[str, type] = {
@@ -81,4 +87,8 @@ __all__ = [
     "MeanShiftRunner",
     "ALGORITHM_REGISTRY",
     "get_algorithm",
+    "elbow_analysis",
+    "silhouette_analysis",
+    "plot_elbow",
+    "plot_silhouette_analysis",
 ]
